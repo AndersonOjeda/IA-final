@@ -97,6 +97,9 @@ def main():
     mode=st.radio('Origen de la imagen',['Cámara en vivo','Tomar foto','Subir imagen'],horizontal=True,key='image_source',label_visibility='collapsed')
     try:
         model_key=(*checkpoint_signature(settings['checkpoint']),settings['cpu_threads'])
+        if settings.get('material_candidate_checkpoint'):
+            model_key+=(*checkpoint_signature(settings['material_candidate_checkpoint']),
+                        settings.get('material_candidate_threshold',.4))
         service=get_model(*model_key)
         detector_key=(*checkpoint_signature(settings['detector_checkpoint']),settings['cpu_threads'],
                       settings['detection_threshold'],settings.get('detection_nms_iou',.45))

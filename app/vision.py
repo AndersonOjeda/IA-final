@@ -90,7 +90,7 @@ def annotate_region(rgb, region):
 
 
 class InferenceService:
-    def __init__(self, checkpoint, cpu_threads=2):
+    def __init__(self, checkpoint, cpu_threads=2, candidate_checkpoint=None, candidate_threshold=.4):
         if not 1 <= cpu_threads <= 4:
             raise ValueError("Usa entre uno y cuatro hilos de CPU.")
         torch.set_num_threads(cpu_threads)
@@ -102,6 +102,15 @@ class InferenceService:
         self.checkpoint_sha256 = sha256(checkpoint)
         self.parameter_count = sum(parameter.numel() for parameter in self.model.parameters())
         self._lock = threading.Lock()
+        self.candidate=None
+        self.candidate_threshold=float(candidate_threshold)
+        self.candidate_checkpoint_sha256=None
+        if candidate_checkpoint is not None:
+            if not 0<self.candidate_threshold<=1:raise ValueError('Confianza candidata inválida.')
+            self.candidate=InferenceService(candidate_checkpoint,cpu_threads)
+            if self.candidate.classes!=self.classes:raise ValueError('Clases candidatas incompatibles.')
+            self.candidate_checkpoint_sha256=self.candidate.checkpoint_sha256
+            self.parameter_count+=self.candidate.parameter_count
 
     def preprocess(self, rgb, region):
         return self.transform(Image.fromarray(crop_region(rgb, region))).unsqueeze(0)
@@ -113,6 +122,10 @@ class InferenceService:
         if not .4 <= fraction <= .95:
             raise ValueError("Tamaño de región inválido.")
         started = time.perf_counter()
+        candidate_reading=None
+        if self.candidate is not None:
+            candidate_reading=self.candidate.classify(rgb,fraction,use_contours,region=region,mode=mode,manual_bounds=manual_bounds)
+            if candidate_reading.confidence>=self.candidate_threshold:return candidate_reading
         if region is None:
             result = Localizer("auto" if use_contours else mode, manual_bounds).locate(rgb)
             if result.region is None:
@@ -126,4 +139,5 @@ class InferenceService:
         return Reading(self.classes[index], probabilities[index], dict(zip(self.classes, probabilities)), region,
                        (time.perf_counter() - started) * 1000, hashlib.sha256(crop.tobytes()).hexdigest(),
                        hashlib.sha256(tensor.numpy().tobytes()).hexdigest(), self.metadata["image_size"],
-                       2 if self.metadata["config"].get("inference_hflip",False) else 1)
+                       (2 if self.metadata["config"].get("inference_hflip",False) else 1)+
+                       (candidate_reading.views if candidate_reading else 0))

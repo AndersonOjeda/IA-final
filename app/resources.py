@@ -11,8 +11,9 @@ from utils.config import PROJECT_ROOT, data_root
 
 
 @st.cache_resource(show_spinner="Cargando la CNN propia en CPU…", max_entries=2)
-def get_model(path, modified_ns, size_bytes, cpu_threads=2):
-    return InferenceService(path, cpu_threads)
+def get_model(path, modified_ns, size_bytes, cpu_threads=2, candidate_path=None,
+              candidate_modified_ns=None,candidate_size_bytes=None,candidate_threshold=.4):
+    return InferenceService(path,cpu_threads,candidate_path,candidate_threshold)
 
 
 @st.cache_resource(show_spinner="Cargando el detector neuronal propio…", max_entries=2)

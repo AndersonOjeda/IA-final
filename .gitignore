@@ -17,9 +17,10 @@ checkpoints/
 models/**
 !models/.gitkeep
 !models/README.md
-# Only our two selected runtime checkpoints are published with the application.
+# Only our selected runtime checkpoints are published with the application.
 !models/runtime/
 !models/runtime/classifier_B.pth
+!models/runtime/classifier_materials.pth
 !models/runtime/detector_D2.pth
 !models/runtime/manifest.json
 !models/runtime/reserved_hashes.json

@@ -15,5 +15,7 @@
   "camera_index": 0,
   "max_upload_mb": 10,
   "max_image_pixels": 16000000,
-  "detection_nms_iou": 0.45
+  "detection_nms_iou": 0.45,
+  "material_candidate_checkpoint": "models/runtime/classifier_materials.pth",
+  "material_candidate_threshold": 0.4
 }

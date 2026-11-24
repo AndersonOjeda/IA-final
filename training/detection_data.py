@@ -51,6 +51,29 @@ def image_tensor(rgb):
     return torch.from_numpy(rgb.transpose(2,0,1).copy()).float()/127.5-1.
 
 
+def suppress_interior_texture(rgb,boxes,categories,config):
+    """Debilita estampados interiores; conserva los bordes y las cajas humanas."""
+    probability=config.get('interior_texture_probability',0.)
+    if probability<=0:return rgb
+    selected=[b for b,c in zip(boxes,categories) if c in config.get('texture_categories',[]) and random.random()<probability]
+    if not selected:return rgb
+    output=rgb.copy();height,width=rgb.shape[:2]
+    for box in selected:
+        x1,y1,x2,y2=box;dx,dy=(x2-x1)*.2,(y2-y1)*.2
+        left,top=max(0,int(x1+dx)),max(0,int(y1+dy))
+        right,bottom=min(width,int(x2-dx)),min(height,int(y2-dy))
+        if min(right-left,bottom-top)<8:continue
+        patch=output[top:bottom,left:right].astype(np.float32)
+        grey=cv2.cvtColor(patch,cv2.COLOR_RGB2GRAY)
+        grey=cv2.GaussianBlur(grey,(0,0),max(1.,min(grey.shape)/10))[:,:,None]
+        # Transición suave, exactamente cero en el borde del parche interior.
+        yy=np.sin(np.linspace(0,np.pi,bottom-top))**2
+        xx=np.sin(np.linspace(0,np.pi,right-left))**2
+        alpha=(yy[:,None]*xx[None,:]*random.uniform(.7,1.))[:,:,None]
+        output[top:bottom,left:right]=np.clip(patch*(1-alpha)+grey*alpha,0,255).astype(np.uint8)
+    return output
+
+
 def annotated_crop(rgb,boxes,categories,config):
     """Vistas cercanas o contexto sin cajas, derivados solo de anotaciones humanas.
 
@@ -116,7 +139,9 @@ class DetectionDataset(Dataset):
         h,w=rgb.shape[:2]
         boxes=np.array([b['xyxy_normalized'] for b in row['boxes']],dtype=np.float32)*[w,h,w,h]
         if self.split=='train':
-            rgb,boxes=annotated_crop(rgb,boxes,[b['category'] for b in row['boxes']],self.config)
+            categories=[b['category'] for b in row['boxes']]
+            rgb=suppress_interior_texture(rgb,boxes,categories,self.config)
+            rgb,boxes=annotated_crop(rgb,boxes,categories,self.config)
         image,boxes,_=letterbox(rgb,self.config['image_size'],boxes,self.split=='train',self.config)
         return image_tensor(image),torch.as_tensor(boxes,dtype=torch.float32),row['id']
 

@@ -241,7 +241,7 @@ class RealModelAndUITests(unittest.TestCase):
                 h,w=rgb.shape[:2]
                 return [Detection((0.,0.,float(w),float(h)),.9,Region((0,0,w,h),'neuronal'))]
         mock_service=FakeService()
-        with patch('streamlit.file_uploader',return_value=io.BytesIO(self.payload)), patch('app.resources.get_detector',return_value=Detector()),patch.object(self.service,'classify',side_effect=mock_service.classify):
+        with patch('streamlit.file_uploader',return_value=io.BytesIO(self.payload)), patch('app.resources.get_detector',return_value=Detector()),patch('app.resources.get_model',return_value=mock_service):
             app=AppTest.from_file(str(PROJECT_ROOT/'app/main.py'),default_timeout=30).run()
             app.radio[0].set_value('Subir imagen').run()
             self.assertFalse(app.exception)

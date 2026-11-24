@@ -8,37 +8,66 @@
   },
   "detector_D2.pth": {
     "architecture": "VisionLocaliza-D2",
-    "sha256": "30a0cca9eb762266df3554f462c8b32dfd16a3ff9bb0bb9eee7a786f3095f05f",
-    "source_checkpoint": "models/detector_D2/D2R_20261124_044758Z_stable11/selected.pth",
+    "sha256": "060e15526da7077c8517b67593901f3fee41774fdcee776f8158437fc81106e8",
+    "source_checkpoint": "models/detector_D2/D2BoxOnly_20261124_061536Z_epoch2/selected.pth",
     "trained_in_project": true,
     "foreign_pretrained_weights": false,
     "validation": {
       "TACO": {
         "images": 197,
         "objects": 642,
-        "mAP50": 0.3108132709455999,
-        "mAP50_95": 0.1605950059689958,
-        "precision": 0.4961636828644501,
-        "recall": 0.30218068535825543
+        "mAP50": 0.3126832966622606,
+        "mAP50_95": 0.16150762261238943,
+        "precision": 0.5389048991354467,
+        "recall": 0.29127725856697817
       },
       "MJU": {
         "images": 36,
         "objects": 42,
-        "mAP50": 0.1884831203704492,
-        "mAP50_95": 0.09343033136185815,
-        "precision": 0.2,
-        "recall": 0.35714285714285715
+        "mAP50": 0.192111103720733,
+        "mAP50_95": 0.10173808270204909,
+        "precision": 0.20967741935483872,
+        "recall": 0.30952380952380953
       }
     },
-    "selection": "Conservative own-weight average; TACO guard, improved single-object coverage, preserve existing photo material responses",
+    "selection": "Own frozen-feature box/quality continuation, epoch2; whole-object validation coverage and domain guards",
     "initial_state_sha256": "b408474c9e505a059ad36674a476d3f8421301de9d6817811be703ba0e3e217c",
     "confidence": 0.25,
     "nms_iou": 0.45,
     "test_used_for_selection": false,
-    "weight_fractions": {
-      "own_previous_runtime_epoch145": 0.5,
-      "own_mixed_epoch185": 0.25,
-      "own_refinement_epoch11_EMA": 0.25
+    "continuation_of_own_random_initialization": true,
+    "whole_object_validation": {
+      "transparent_bottles_coverage85_IoU50_before": 17,
+      "transparent_bottles_coverage85_IoU50_after": 21,
+      "transparent_bottles_total": 75,
+      "printed_packages_coverage85_IoU50_before": 16,
+      "printed_packages_coverage85_IoU50_after": 18,
+      "printed_packages_total": 56
+    }
+  },
+  "classifier_materials.pth": {
+    "architecture": "VisionCNN-v1",
+    "sha256": "368ab8c3d2a1b9858db9d7483aeda66817f012cc4cdce11b16ae86eac448de7b",
+    "source_checkpoint": "models/material_refinement/BMaterialsBalanced_20261124_072110Z_fixed/selected.pth",
+    "trained_in_project": true,
+    "foreign_pretrained_weights": false,
+    "continued_own_classifier_B": true,
+    "epoch": 14,
+    "fallback_classifier": "classifier_B.pth",
+    "minimum_confidence": 0.4,
+    "validation": {
+      "original": {
+        "accuracy": 0.7737556561085973,
+        "macro_F1": 0.785816999532123,
+        "plastic_recall": 0.7523809523809524,
+        "images": 884
+      },
+      "objects": {
+        "accuracy": 0.2077922077922078,
+        "macro_F1": 0.17442372442372445,
+        "plastic_recall": 0.08673469387755102,
+        "images": 308
+      }
     }
   }
 }

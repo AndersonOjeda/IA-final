@@ -29,7 +29,7 @@ MATERIALS = {
 }
 
 
-def evaluate(checkpoint,root,output,split='val',classifier=None,confidence=.35,final=False,nms_iou=.45):
+def evaluate(checkpoint,root,output,split='val',classifier=None,confidence=.35,final=False,nms_iou=.45,candidate=None,candidate_threshold=.4):
     root,output=Path(root),Path(output)
     if split=='test' and not final:
         raise ValueError('Test reservado: requiere --final y selección congelada.')
@@ -44,7 +44,7 @@ def evaluate(checkpoint,root,output,split='val',classifier=None,confidence=.35,f
         if frozen['checkpoint_sha256']!=sha or frozen['confidence']!=confidence or frozen.get('nms_iou',.45)!=nms_iou:
             raise ValueError('El modelo o umbral cambiaron después de congelar selección.')
     detector=NeuralDetector(checkpoint,confidence=confidence,nms_iou=nms_iou)
-    service=InferenceService(classifier) if classifier else None
+    service=InferenceService(classifier,candidate_checkpoint=candidate,candidate_threshold=candidate_threshold) if classifier else None
     manifest=json.loads((root/'manifest.json').read_text(encoding='utf-8'))
     rows=[r for r in manifest if r['split']==split]
     if len(rows)<2:raise ValueError('La partición debe contener al menos dos imágenes.')
@@ -116,7 +116,8 @@ def evaluate(checkpoint,root,output,split='val',classifier=None,confidence=.35,f
                     'detector_CPU_FPS':1000/float(np.mean(timings[1:])),'warmup_images':1,
                     'test_used_for_selection':False,'timing_detection_confidence':.001,'CPU_threads':2,'nms_iou':nms_iou})
     if service:
-        metrics['CNN']={'checkpoint_sha256':service.checkpoint_sha256,'matched_known_material_objects':matched_classifiable,
+        metrics['CNN']={'checkpoint_sha256':service.checkpoint_sha256,'candidate_checkpoint_sha256':service.candidate_checkpoint_sha256,
+             'candidate_threshold':candidate_threshold if candidate else None,'matched_known_material_objects':matched_classifiable,
              'correct_material_on_matched_objects':crop_correct,'classification_accuracy_matched':crop_correct/max(matched_classifiable,1),
              'end_to_end_recall_IoU50_correct_material':crop_correct/max(mappable_total,1),'known_material_objects':mappable_total,
              'oracle_crop_accuracy':oracle_correct/max(oracle_total,1),
@@ -142,4 +143,5 @@ if __name__=='__main__':
     p.add_argument('--output',required=True);p.add_argument('--split',choices=['val','test'],default='val')
     p.add_argument('--classifier');p.add_argument('--confidence',type=float,default=.35);p.add_argument('--final',action='store_true')
     p.add_argument('--nms-iou',type=float,default=.45)
-    a=p.parse_args();evaluate(a.checkpoint,a.root,a.output,a.split,a.classifier,a.confidence,a.final,a.nms_iou)
+    p.add_argument('--candidate');p.add_argument('--candidate-threshold',type=float,default=.4)
+    a=p.parse_args();evaluate(a.checkpoint,a.root,a.output,a.split,a.classifier,a.confidence,a.final,a.nms_iou,a.candidate,a.candidate_threshold)

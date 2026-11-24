@@ -11,10 +11,10 @@ from app.detector import NeuralDetector, analyze_objects, annotate_objects, box_
 from app.vision import InferenceService, decode_image
 
 
-def check(checkpoint,classifier,output,root='data/detection/taco',confidence=.35,nms_iou=.45):
+def check(checkpoint,classifier,output,root='data/detection/taco',confidence=.35,nms_iou=.45,candidate=None,candidate_threshold=.4):
     output=Path(output);output.mkdir(parents=True,exist_ok=False)
     detector=NeuralDetector(checkpoint,confidence=confidence,nms_iou=nms_iou)
-    cnn=InferenceService(classifier)
+    cnn=InferenceService(classifier,candidate_checkpoint=candidate,candidate_threshold=candidate_threshold)
     reports=[]
     for path in sorted(Path('data/field_samples/samples').glob('*/record.json')):
         record=json.loads(path.read_text(encoding='utf-8'))
@@ -57,6 +57,8 @@ def check(checkpoint,classifier,output,root='data/detection/taco',confidence=.35
     # Un video a partir de fotos desplazadas sirve solo como prueba técnica de
     # seguimiento, no se presenta como video real ni sustituye una webcam.
     result={'confidence':confidence,'nms_iou':nms_iou,'photos':reports,'background_candidates':backgrounds,
+            'classifier_sha256':cnn.checkpoint_sha256,'candidate_sha256':cnn.candidate_checkpoint_sha256,
+            'candidate_threshold':candidate_threshold if candidate else None,
             'background_note':'Natural validation crops disjoint from annotated boxes; review contact sheet for unannotated objects.',
             'physical_webcam_tested':False,'real_video_tested':False,
             'field_boxes_note':'Existing manual regions are diagnostic crops, not authoritative tight detection annotations; no field IoU/AP claimed.'}
@@ -72,4 +74,5 @@ if __name__=='__main__':
     p.add_argument('--output',required=True);p.add_argument('--root',default='data/detection/taco')
     p.add_argument('--confidence',type=float,default=.35)
     p.add_argument('--nms-iou',type=float,default=.45)
-    a=p.parse_args();check(a.checkpoint,a.classifier,a.output,a.root,a.confidence,a.nms_iou)
+    p.add_argument('--candidate');p.add_argument('--candidate-threshold',type=float,default=.4)
+    a=p.parse_args();check(a.checkpoint,a.classifier,a.output,a.root,a.confidence,a.nms_iou,a.candidate,a.candidate_threshold)
