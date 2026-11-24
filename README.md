@@ -28,7 +28,7 @@ Los fotogramas usan JPEG de calidad 0,90. La caja vence a los 650 ms desde la ca
 
 ## Desplegar en Streamlit Cloud
 
-Usa este repositorio, rama `main` y archivo `app/main.py`. `requirements.txt` instala el runtime con OpenCV headless y PyTorch CPU. Los dos pesos propios seleccionados están incluidos en `models/runtime/`, junto con sus hashes y procedencia; no se descargan modelos al iniciar. Los originales y el resto de experimentos permanecen separados. La cámara requiere HTTPS (incluido en Streamlit Cloud) o localhost. No se guardan los fotogramas de video. El video nativo puede ser fluido aunque el reconocimiento remoto tarde más según la red y los recursos del servidor.
+Usa este repositorio, rama `main` y archivo `app/main.py`. `requirements.txt` instala el runtime con OpenCV headless y PyTorch CPU. Los pesos propios seleccionados están incluidos en `models/runtime/`, junto con sus hashes y procedencia; no se descargan modelos al iniciar. Los originales y el resto de experimentos permanecen separados. La cámara requiere HTTPS (incluido en Streamlit Cloud) o localhost. No se guardan los fotogramas de video. El video nativo puede ser fluido aunque el reconocimiento remoto tarde más según la red y los recursos del servidor.
 
 ## Detector propio D2
 
