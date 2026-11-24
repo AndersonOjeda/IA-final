@@ -1,8 +1,8 @@
 # Aplicación Vision-IA
 
-Interfaz Streamlit local: carga de fotos, captura desde navegador y video OpenCV con inferencia CPU de nuestra CNN B. Asistente de reciclaje por reglas documentadas.
+Interfaz Streamlit local y Cloud: video del navegador, fotos y carga de imágenes. Detector propio D2 y CNN B en CPU, un residuo a la vez y destino de separación.
 
-Fase 3.1: localización geométrica en todo el fotograma con fallo explícito, región manual ajustable, imagen completa, diagnóstico del recorte exacto y registro etiquetado de fotografías reales. [Resultados y límites](../docs/PHASE3_1_DIAGNOSTIC.md).
+La cámara se elige en el navegador y requiere HTTPS o localhost. El video nativo continúa mientras el servidor reconoce fotogramas separados; no hay servicios externos de detección ni pesos ajenos. Los dos modelos seleccionados se incluyen en `models/runtime/` para desplegar sin descargar pesos.
 
 Desde la raíz del proyecto:
 
@@ -10,4 +10,4 @@ Desde la raíz del proyecto:
 .\.venv\Scripts\python.exe -m streamlit run app/main.py
 ```
 
-Abre http://127.0.0.1:8501. Guía de uso, configuración, módulos y limitaciones: [docs/APP.md](../docs/APP.md).
+Abre http://127.0.0.1:8501. Uso, despliegue y límites actuales: [README](../README.md).

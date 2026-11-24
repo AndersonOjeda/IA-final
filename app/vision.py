@@ -94,6 +94,7 @@ class InferenceService:
         if not 1 <= cpu_threads <= 4:
             raise ValueError("Usa entre uno y cuatro hilos de CPU.")
         torch.set_num_threads(cpu_threads)
+        self.cpu_threads=cpu_threads
         cv2.setNumThreads(1)
         self.model, self.metadata = load_checkpoint(checkpoint, "cpu")
         self.classes = tuple(self.metadata["classes"])
@@ -106,6 +107,7 @@ class InferenceService:
         return self.transform(Image.fromarray(crop_region(rgb, region))).unsqueeze(0)
 
     def classify(self, rgb, fraction=.72, use_contours=False, *, region=None, mode="full", manual_bounds=(.2, .2, .8, .8)):
+        if torch.get_num_threads()!=self.cpu_threads:torch.set_num_threads(self.cpu_threads)
         if not isinstance(rgb, np.ndarray) or rgb.ndim != 3 or rgb.shape[2] != 3 or rgb.dtype != np.uint8 or min(rgb.shape[:2]) < 16:
             raise ValueError("Se requiere una imagen RGB válida.")
         if not .4 <= fraction <= .95:

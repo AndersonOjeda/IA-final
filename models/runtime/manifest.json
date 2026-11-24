@@ -1,0 +1,16 @@
+{
+  "classifier_B.pth": {
+    "architecture": "VisionCNN-v1",
+    "sha256": "10f25c75048b45459247e3a7cc51204e2c6413ac7735be0a46821622cd4d931c",
+    "source_checkpoint": "runs/synced/B/B_20261121_032819_705556Z_19e1a326/best_model.pth",
+    "trained_in_project": true,
+    "foreign_pretrained_weights": false
+  },
+  "detector_D2.pth": {
+    "architecture": "VisionLocaliza-D2",
+    "sha256": "ea80d2c0759933db6550bd3454286d3c10b6397b76e15c76d477c816d031729f",
+    "source_checkpoint": "models/detector_D2/D2_20261123_222215/best.pth",
+    "trained_in_project": true,
+    "foreign_pretrained_weights": false
+  }
+}

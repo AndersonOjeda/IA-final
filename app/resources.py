@@ -35,6 +35,8 @@ def get_preview_server():
 @st.cache_data(show_spinner=False)
 def reserved_image_hashes():
     values = set()
+    bundled=PROJECT_ROOT/'models/runtime/reserved_hashes.json'
+    if bundled.is_file():values.update(json.loads(bundled.read_text(encoding='utf-8')))
     roots = {PROJECT_ROOT / "data", data_root()}
     for root in roots:
         detection_manifest=root/'detection/taco/manifest.json'

@@ -48,6 +48,7 @@ class NeuralDetector:
         if payload.get('architecture')!=ARCHITECTURE or provenance.get('official_detector_components') is not False:
             raise ValueError('Se exige arquitectura propia VisionLocaliza-D2. D1/YOLO no es válido como detector final.')
         torch.set_num_threads(cpu_threads)
+        self.cpu_threads=cpu_threads
         self.model=VisionLocaliza()
         self.model.load_state_dict(payload['state_dict'],strict=True)
         self.model.eval().float()
@@ -58,6 +59,9 @@ class NeuralDetector:
         self._lock=threading.Lock()
 
     def detect(self,rgb,confidence=None):
+        # Streamlit may invoke a cached model from a new script/callback thread.
+        threads=getattr(self,'cpu_threads',2)
+        if torch.get_num_threads()!=threads:torch.set_num_threads(threads)
         if not isinstance(rgb,np.ndarray) or rgb.dtype!=np.uint8 or rgb.ndim!=3 or rgb.shape[2]!=3:
             raise ValueError('Se requiere imagen RGB uint8.')
         started=time.perf_counter()

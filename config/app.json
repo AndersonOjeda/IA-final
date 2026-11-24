@@ -1,9 +1,9 @@
 {
-  "checkpoint": "runs/synced/B/B_20261121_032819_705556Z_19e1a326/best_model.pth",
+  "checkpoint": "models/runtime/classifier_B.pth",
   "cpu_threads": 2,
   "low_confidence_threshold": 0.65,
   "localization_mode": "neural",
-  "detector_checkpoint": "models/detector_D2/D2_20261123_222215/best.pth",
+  "detector_checkpoint": "models/runtime/detector_D2.pth",
   "detection_threshold": 0.25,
   "manual_bounds": [
     0.2,

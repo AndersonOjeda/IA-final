@@ -185,7 +185,8 @@ class RealModelAndUITests(unittest.TestCase):
         self.assertEqual(len(app.slider),0)
         self.assertEqual(len(app.text_input),0)
         self.assertEqual(len(app.selectbox),0)
-        self.assertEqual(len(app.button),2)
+        self.assertEqual(len(app.button),0)
+        self.assertEqual(len(app.get("component_instance")),1)
         app.radio[0].set_value('Tomar foto').run()
         self.assertFalse(app.exception)
         self.assertEqual(len(app.get('camera_input')),1)
@@ -200,24 +201,30 @@ class RealModelAndUITests(unittest.TestCase):
         self.assertFalse(app.exception)
         self.assertTrue(any('No se pudo cargar' in entry.value for entry in app.error))
 
-    def test_video_ui_start_stop_and_mode_change_without_physical_camera(self):
-        from app.resources import get_camera_pool
-        capture=FakeCapture()
-        with patch('app.camera.open_capture',return_value=capture):
+    def test_browser_video_frame_and_stop_without_server_camera(self):
+        import base64
+        from app.detector import Detection
+        from app.localization import Region
+        class Detector:
+            def detect(self,rgb):return [Detection((10,10,50,60),.9,Region((5,5,65,65),'neuronal'))]
+        frame={'event':'frame','stream_id':'browser-test','sequence':1,'image':base64.b64encode(self.payload).decode()}
+        # Browser protocol limits live frames to 640 pixels; use a small real JPEG.
+        buf=io.BytesIO();Image.new('RGB',(200,200)).save(buf,'JPEG')
+        frame['image']=base64.b64encode(buf.getvalue()).decode()
+        with patch('app.camera.open_capture',side_effect=AssertionError('Server camera must not open')),patch('app.browser_camera.camera_component',return_value=frame) as component,patch('app.resources.get_detector',return_value=Detector()):
             app=AppTest.from_file(str(PROJECT_ROOT/'app/main.py'),default_timeout=30).run()
-            next(b for b in app.button if b.label.startswith('Activar')).click().run()
-            stream=get_camera_pool().get(app.session_state['camera_owner'])
-            try:
-                self.assertTrue(wait_until(lambda:stream.snapshot().frame is not None))
-                app.run()
-                self.assertFalse(app.exception)
-                self.assertTrue(any('/preview/' in m.value for m in app.markdown))
-                next(b for b in app.button if b.label=='Detener').click().run()
-                self.assertTrue(wait_until(lambda:capture.released))
-                app.radio[0].set_value('Subir imagen').run()
-                self.assertFalse(app.exception)
-                self.assertFalse(stream.alive)
-            finally:stream.stop()
+            self.assertFalse(app.exception)
+            recognition=app.session_state['browser_recognition'][1]
+            self.assertTrue(recognition.running)
+            self.assertEqual(len(recognition.objects),1)
+            app.run()
+            self.assertEqual(component.call_args.kwargs['response']['sequence'],1)
+            component.return_value={'event':'stopped','stream_id':'browser-test','sequence':2}
+            app.run()
+            self.assertFalse(recognition.running);self.assertEqual(recognition.objects,())
+            app.radio[0].set_value('Subir imagen').run()
+            self.assertFalse(app.exception)
+            self.assertNotIn('browser_recognition',app.session_state)
 
     def test_invalid_upload_is_handled(self):
         with patch('streamlit.file_uploader',return_value=io.BytesIO(b'invalid')):
