@@ -58,8 +58,7 @@ async function start(){
     if(!opening){acquired.getTracks().forEach(track=>track.stop());return;}
     media=acquired;streamId=crypto.randomUUID();sequence=0;pending=null;lastSent=0;detection=null;
     video.srcObject=media;await video.play();opening=false;$('empty').hidden=true;buttons();notice('');
-    const actual=media.getVideoTracks()[0].getSettings();
-    $('stage').style.aspectRatio=`${actual.width||video.videoWidth}/${actual.height||video.videoHeight}`;
+    $('stage').style.aspectRatio=`${video.videoWidth}/${video.videoHeight}`;
     await devices();resize();
   }catch(error){
     stop(false);
@@ -69,7 +68,10 @@ async function start(){
 }
 function tick(now){
   if(media&&video.readyState>=2){
-    if(overlay.width!==video.videoWidth||overlay.height!==video.videoHeight){overlay.width=video.videoWidth;overlay.height=video.videoHeight;}
+    if(overlay.width!==video.videoWidth||overlay.height!==video.videoHeight){
+      overlay.width=video.videoWidth;overlay.height=video.videoHeight;
+      $('stage').style.aspectRatio=`${video.videoWidth}/${video.videoHeight}`;resize();
+    }
     pen.clearRect(0,0,overlay.width,overlay.height);
     if(detection&&now-lastDetection<650){
       const [x1,y1,x2,y2]=detection.box;
@@ -78,11 +80,11 @@ function tick(now){
       pen.font=`600 ${Math.max(18,overlay.width/38)}px Segoe UI`;pen.fillStyle=pen.strokeStyle;
       pen.fillText(detection.label,Math.max(4,x1*overlay.width),Math.max(24,y1*overlay.height-8));
     }
-    if(!pending&&now-lastSent>=interval&&enabled&&!document.hidden){
+    if(!pending&&now-lastSent>=interval&&enabled&&!document.hidden&&video.videoWidth>=16&&video.videoHeight>=16){
       const scale=Math.min(1,640/Math.max(video.videoWidth,video.videoHeight));
       capture.width=Math.round(video.videoWidth*scale);capture.height=Math.round(video.videoHeight*scale);
       capturePen.drawImage(video,0,0,capture.width,capture.height);
-      const image=capture.toDataURL('image/jpeg',.78).split(',')[1];
+      const image=capture.toDataURL('image/jpeg',.90).split(',')[1];
       pending={sequence:++sequence,sent:now};lastSent=now;
       send({event:'frame',stream_id:streamId,sequence,image});
     }
@@ -95,8 +97,9 @@ window.addEventListener('message',event=>{
   const args=event.data.args||{};enabled=!event.data.disabled;interval=Math.max(200,args.interval_ms||250);
   const reply=args.response;
   if(reply&&reply.stream_id===streamId&&pending&&reply.sequence===pending.sequence){
-    const recent=performance.now()-pending.sent<1200;
-    pending=null;detection=recent?reply.detection:null;lastDetection=performance.now();
+    const capturedAt=pending.sent;
+    const recent=performance.now()-capturedAt<650;
+    pending=null;detection=recent?reply.detection:null;lastDetection=capturedAt;
     if(reply.error)notice(reply.error,true);else notice('');
   }
   buttons();resize();

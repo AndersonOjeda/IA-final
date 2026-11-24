@@ -24,6 +24,8 @@ También puedes **Tomar foto** o **Subir imagen**. En fotografías, **Ajustar el
 
 El componente propio `app/camera_component/` muestra video nativo del navegador y envía JPEG de hasta 640 px por el canal de Streamlit, con un solo fotograma pendiente y un máximo de cuatro envíos por segundo. La vista continúa aunque la inferencia tarde; solo devuelve una caja, que caduca si no hay respuesta reciente. No utiliza WebRTC, servidores TURN, puertos locales ni servicios de detección externos. En local se midieron 151 fotogramas de video y 20 solicitudes de reconocimiento en cinco segundos con la cámara física. Esto verifica el flujo, no la precisión con cualquier cámara. Evidencia: `runs/browser_camera/full_roundtrip.json`.
 
+Los fotogramas usan JPEG de calidad 0,90. La caja vence a los 650 ms desde la captura, no desde la recepción de la respuesta; la proporción de imagen y recuadro sigue las dimensiones reales del video al girar el móvil. Esto evita mostrar cajas antiguas o deformadas sin modificar el detector.
+
 ## Desplegar en Streamlit Cloud
 
 Usa este repositorio, rama `main` y archivo `app/main.py`. `requirements.txt` instala el runtime con OpenCV headless y PyTorch CPU. Los dos pesos propios seleccionados están incluidos en `models/runtime/`, junto con sus hashes y procedencia; no se descargan modelos al iniciar. Los originales y el resto de experimentos permanecen separados. La cámara requiere HTTPS (incluido en Streamlit Cloud) o localhost. No se guardan los fotogramas de video. El video nativo puede ser fluido aunque el reconocimiento remoto tarde más según la red y los recursos del servidor.
