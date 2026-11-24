@@ -2,12 +2,11 @@
 import base64
 from collections import deque
 from pathlib import Path
-import time
 
 import streamlit.components.v1 as components
 
 from app.detector import ObjectTracker
-from app.recycling import LABELS
+from app.recycling import guidance
 from app.vision import decode_image
 
 camera_component=components.declare_component('vision_camera',path=str(Path(__file__).parent/'camera_component'))
@@ -15,13 +14,13 @@ camera_component=components.declare_component('vision_camera',path=str(Path(__fi
 
 class BrowserRecognition:
     """Session-local tracking. No camera hardware, disk writes or remote models."""
-    def __init__(self):
-        self.tracker=ObjectTracker()
+    def __init__(self, material_threshold=.65):
+        self.tracker=ObjectTracker(live=True)
+        self.material_threshold=material_threshold
         self.stream_id=None
         self.sequence=0
         self.retired=deque(maxlen=8)
         self.objects=()
-        self.updated=0.
         self.response={}
         self.running=False
 
@@ -33,12 +32,11 @@ class BrowserRecognition:
         if sid==self.stream_id and sequence<=self.sequence:return False
         if sid!=self.stream_id:
             if self.stream_id:self.retired.append(self.stream_id)
-            self.stream_id=sid;self.sequence=0;self.tracker=ObjectTracker();self.objects=()
+            self.stream_id=sid;self.sequence=0;self.tracker=ObjectTracker(live=True);self.objects=()
         self.sequence=sequence
         self.response={'stream_id':sid,'sequence':sequence,'detection':None}
-        self.updated=time.monotonic()
         if payload.get('event')=='stopped':
-            self.running=False;self.objects=();self.tracker=ObjectTracker()
+            self.running=False;self.objects=();self.tracker=ObjectTracker(live=True)
             return True
         try:
             if payload.get('event')!='frame':raise ValueError('Fotograma inválido.')
@@ -50,9 +48,16 @@ class BrowserRecognition:
             if objects:
                 item=objects[0];height,width=frame.shape[:2]
                 box=[float(v)/scale for v,scale in zip(item.detection.box,[width,height,width,height])]
-                self.response['detection']={'box':box,'label':LABELS[item.reading.material],
-                                            'confirmed':item.confirmed}
+                result=None
+                if item.confirmed:
+                    reading=item.reading
+                    info=guidance(reading.material)
+                    label=info['label']
+                    if reading.confidence<self.material_threshold:label='Posible '+label.lower()
+                    result={'label':label,'destination':info['destination'],
+                            'organic':reading.material=='organicos'}
+                self.response['detection']={'box':box,'track_id':item.track_id,'material':result}
         except Exception:
-            self.objects=();self.tracker=ObjectTracker()
+            self.objects=();self.tracker=ObjectTracker(live=True)
             self.response['error']='No se pudo reconocer este fotograma. Prueba con más luz y el residuo completo.'
         return True

@@ -109,17 +109,28 @@ def primary_detection(detections,previous_box=None):
 
 class ObjectTracker:
     """Un residuo principal estable; elimina pérdidas sin cajas fantasma."""
-    def __init__(self):
+    def __init__(self, *, live=False):
+        self.live=live
         self.tracks={}
         self.next_id=1
+        self.misses=0
+        self.last_seen=0.
 
     def update(self,frame,detections,classifier):
-        from app.stability import PredictionFilter
+        from app.stability import LiveMaterialFilter, PredictionFilter
         from dataclasses import replace
         result,new={},{}
         used=set()
+        now=time.monotonic()
+        if self.live and now-self.last_seen>1.1:self.tracks.clear()
         previous=next(iter(self.tracks.values()),None)
         selected=primary_detection(detections,previous['box'] if previous else None)
+        if self.live and not selected:
+            self.misses+=1
+            if self.misses>=2:self.tracks.clear()
+            return []
+        self.misses=0
+        self.last_seen=now
         for detection in ([selected] if selected is not None else []):
             candidates=[(box_iou(detection.box,t['box']),key) for key,t in self.tracks.items() if key not in used]
             match=max(candidates,default=(0,None))
@@ -127,8 +138,10 @@ class ObjectTracker:
             if match[0]<.25:
                 self.next_id+=1
             used.add(key)
-            track=self.tracks.get(key,{'box':detection.box,'filter':PredictionFilter()})
-            box=tuple(.25*a+.75*b for a,b in zip(track['box'],detection.box))
+            track=self.tracks.get(key)
+            if track is None:
+                track={'box':detection.box,'filter':LiveMaterialFilter() if self.live else PredictionFilter()}
+            box=detection.box if self.live else tuple(.25*a+.75*b for a,b in zip(track['box'],detection.box))
             detection=replace(detection,box=box)
             reading=classifier.classify(frame,region=detection.region)
             temporal=track['filter'].update(frame,reading)

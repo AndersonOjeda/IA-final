@@ -3,7 +3,6 @@ import hashlib
 import html
 from pathlib import Path
 import sys
-import time
 
 ROOT=Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:sys.path.insert(0,str(ROOT))
@@ -44,19 +43,13 @@ def show_objects(objects,threshold):
 def live_panel(service,detector,threshold,model_key):
     previous=st.session_state.get('browser_recognition')
     if previous is None or previous[0]!=model_key:
-        previous=(model_key,BrowserRecognition());st.session_state['browser_recognition']=previous
+        previous=(model_key,BrowserRecognition(threshold));st.session_state['browser_recognition']=previous
     recognition=previous[1]
     def receive_frame():
         recognition.consume(st.session_state.get('browser_camera'),detector,service)
-    picture,result=st.columns([1.8,1],gap='large')
-    with picture:
-        payload=camera_component(response=recognition.response,interval_ms=250,key='browser_camera',
-                                 on_change=receive_frame,default=None)
-        recognition.consume(payload,detector,service)
-    with result:
-        if recognition.running:
-            show_objects(recognition.objects if time.monotonic()-recognition.updated<1.5 else (),threshold)
-        elif recognition.response.get('error'):st.info(recognition.response['error'])
+    payload=camera_component(response=recognition.response,interval_ms=250,key='browser_camera',
+                             on_change=receive_frame,default=None)
+    recognition.consume(payload,detector,service)
 
 
 def photo_panel(mode,service,detector,settings,model_key):

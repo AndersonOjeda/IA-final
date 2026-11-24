@@ -2,6 +2,7 @@
 import base64
 import io
 import unittest
+from dataclasses import replace
 
 import numpy as np
 from PIL import Image
@@ -32,9 +33,42 @@ class BrowserCameraTests(unittest.TestCase):
         self.assertEqual(detector.calls,1);self.assertEqual(classifier.calls,1)
         self.assertEqual(len(recognition.objects),1)
         np.testing.assert_allclose(recognition.response['detection']['box'],[10/160,20/120,50/160,90/120])
+        self.assertIsNone(recognition.response['detection']['material'])
         self.assertEqual(recognition.response['sequence'],1)
         self.assertFalse(recognition.consume(frame,detector,classifier))
         self.assertEqual(detector.calls,1)
+
+    def test_material_ignores_one_miss_and_isolated_conflicting_votes(self):
+        recognition=BrowserRecognition()
+        detector=Detector()
+        primary=detector.detect(None)[0]
+        positions=[[primary],[primary],[],[primary]]+[[primary]]*6+[[],[],[primary]]
+        labels=iter(['plastico','plastico','plastico','papel','plastico',
+                     'metal','metal','metal','metal','metal'])
+
+        class AlternatingService(FakeService):
+            def classify(self, frame, *, region):
+                reading=super().classify(frame,region=region)
+                label=next(labels)
+                return replace(reading,material=label,
+                               probabilities={key: .8 if key==label else .04 for key in reading.probabilities})
+
+        classifier=AlternatingService()
+        results=[]
+        for i,detections in enumerate(positions,1):
+            detector.detect=lambda _: detections
+            recognition.consume(payload(sequence=i),detector,classifier)
+            results.append(recognition.response['detection'])
+
+        self.assertIsNone(results[0]['material'])
+        self.assertIsNone(results[1]['material'])
+        self.assertIsNone(results[2])
+        self.assertEqual(results[0]['track_id'],results[3]['track_id'])
+        self.assertEqual([r['material']['label'] for r in results[3:9]],['Plástico']*6)
+        self.assertEqual(results[9]['material']['label'],'Metal')
+        self.assertIsNone(results[-1]['material'])
+        self.assertNotEqual(results[-1]['track_id'],results[0]['track_id'])
+        self.assertEqual(classifier.calls,10)
 
     def test_stop_clears_result_and_late_frames_do_not_restart_old_stream(self):
         recognition=BrowserRecognition();detector=Detector();classifier=FakeService()

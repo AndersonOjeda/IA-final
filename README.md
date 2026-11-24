@@ -18,13 +18,13 @@ Abre http://127.0.0.1:8501. Reinicia la terminal si había una versión anterior
 2. Muestra el residuo completo. Verás la imagen, el material propuesto y dónde depositarlo.
 3. Pulsa **Detener** para liberar la cámara. No es necesario pausar para ver la imagen ni calibrar un fondo.
 
-La aplicación reconoce **un residuo a la vez**, tanto en video como en fotografías. Elige la caja de mayor confianza; en video mantiene el objeto anterior si sigue detectado y su puntuación está a menos de 0,10 de la mejor, evitando saltos entre cajas. Si no hay detección suficiente, no muestra caja ni ejecuta la CNN. Este filtro de uso no cambia los pesos ni las métricas históricas del detector, calculadas sobre todas sus predicciones.
+La aplicación reconoce **un residuo a la vez**, tanto en video como en fotografías. En video mantiene el objeto anterior si sigue detectado y su puntuación está a menos de 0,10 de la mejor. El material aparece cuando coinciden tres de las últimas cuatro lecturas. Una vez confirmado, otro material necesita cuatro de las últimas cinco para reemplazarlo.
 
 También puedes **Tomar foto** o **Subir imagen**. En fotografías, **Ajustar el recorte si no lo reconoce** conserva el respaldo manual. La pantalla no muestra configuración de modelos, métricas, diagnóstico ni registro de fotografías. Sus herramientas y resultados anteriores se conservan fuera del flujo normal. El video usa la cámara del navegador: autoriza su acceso y elige la webcam externa o la cámara del móvil en el selector.
 
 El componente propio `app/camera_component/` muestra video nativo del navegador y envía JPEG de hasta 640 px por el canal de Streamlit, con un solo fotograma pendiente y un máximo de cuatro envíos por segundo. La vista continúa aunque la inferencia tarde; solo devuelve una caja, que caduca si no hay respuesta reciente. No utiliza WebRTC, servidores TURN, puertos locales ni servicios de detección externos. En local se midieron 151 fotogramas de video y 20 solicitudes de reconocimiento en cinco segundos con la cámara física. Esto verifica el flujo, no la precisión con cualquier cámara. Evidencia: `runs/browser_camera/full_roundtrip.json`.
 
-Los fotogramas usan JPEG de calidad 0,90. La caja vence a los 650 ms desde la captura, no desde la recepción de la respuesta; la proporción de imagen y recuadro sigue las dimensiones reales del video al girar el móvil. Esto evita mostrar cajas antiguas o deformadas sin modificar el detector.
+Los fotogramas usan JPEG de calidad 0,90. El navegador sigue la textura del residuo entre detecciones y puede sostener la caja durante una lectura omitida. La caja y el resultado se ocultan si se pierde la referencia visual o si la última detección vence. La proporción de la caja sigue las dimensiones reales del video al girar el móvil.
 
 ## Desplegar en Streamlit Cloud
 
