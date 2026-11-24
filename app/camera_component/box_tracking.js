@@ -1,6 +1,6 @@
 /* Follow the detector's box between replies by matching its image texture. */
 const BOX_MAX_AGE = 1100;
-const UNTRACKED_MAX_AGE = 500;
+const UNTRACKED_MAX_AGE = 650;
 
 function boxOverlap(a, b) {
   const area = box => (box[2] - box[0]) * (box[3] - box[1]);

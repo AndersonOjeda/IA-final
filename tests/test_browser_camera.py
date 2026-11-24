@@ -27,6 +27,44 @@ class Detector:
 
 
 class BrowserCameraTests(unittest.TestCase):
+    def test_zoom_requires_repeated_detection_and_maps_box_to_original_frame(self):
+        recognition=BrowserRecognition()
+        classifier=FakeService()
+        center_box=(22,12,72,66)
+
+        class ZoomOnly:
+            def detect(self,frame):
+                if frame.shape[:2]==(120,160):
+                    return []
+                return [Detection(center_box,.28,Region((16,8,80,72),'test'))]
+
+        detector=ZoomOnly()
+        recognition.consume(payload(sequence=1),detector,classifier)
+        self.assertIsNone(recognition.response['detection'])
+        self.assertEqual(classifier.calls,0)
+        recognition.consume(payload(sequence=2),detector,classifier)
+        np.testing.assert_allclose(recognition.response['detection']['box'],
+                                   [44/160,29/120,94/160,83/120])
+        self.assertEqual(classifier.calls,1)
+        recognition.consume(payload(sid='new-stream'),detector,classifier)
+        self.assertIsNone(recognition.response['detection'])
+        self.assertEqual(classifier.calls,1)
+
+    def test_zoom_does_not_accept_a_box_cut_by_the_crop_edge(self):
+        recognition=BrowserRecognition()
+        classifier=FakeService()
+
+        class CutOff:
+            def detect(self,frame):
+                if frame.shape[:2]==(120,160):
+                    return []
+                return [Detection((0,12,62,66),.8,Region((0,8,70,72),'test'))]
+
+        for sequence in range(1,6):
+            recognition.consume(payload(sequence=sequence),CutOff(),classifier)
+            self.assertIsNone(recognition.response['detection'])
+        self.assertEqual(classifier.calls,0)
+
     def test_frame_reaches_own_models_once_and_box_is_normalized(self):
         recognition=BrowserRecognition();detector=Detector();classifier=FakeService();frame=payload()
         self.assertTrue(recognition.consume(frame,detector,classifier))

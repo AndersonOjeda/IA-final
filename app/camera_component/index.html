@@ -128,8 +128,8 @@ function applyDetection(detection, request, now) {
   if(candidate.template) {
     for(const frame of request.frames) {
       candidate.unmatchedFrames=candidate.follow(frame)?0:candidate.unmatchedFrames+1;
-      if(candidate.unmatchedFrames>=2)return;
     }
+    // Use the newest visible frame to verify a delayed reply, even if intermediate frames failed.
     if(candidate.unmatchedFrames)return;
   }
   const sameObject=track?.detection.track_id===detection.track_id && displayBox &&
