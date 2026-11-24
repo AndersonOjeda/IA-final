@@ -8,9 +8,37 @@
   },
   "detector_D2.pth": {
     "architecture": "VisionLocaliza-D2",
-    "sha256": "ea80d2c0759933db6550bd3454286d3c10b6397b76e15c76d477c816d031729f",
-    "source_checkpoint": "models/detector_D2/D2_20261123_222215/best.pth",
+    "sha256": "30a0cca9eb762266df3554f462c8b32dfd16a3ff9bb0bb9eee7a786f3095f05f",
+    "source_checkpoint": "models/detector_D2/D2R_20261124_044758Z_stable11/selected.pth",
     "trained_in_project": true,
-    "foreign_pretrained_weights": false
+    "foreign_pretrained_weights": false,
+    "validation": {
+      "TACO": {
+        "images": 197,
+        "objects": 642,
+        "mAP50": 0.3108132709455999,
+        "mAP50_95": 0.1605950059689958,
+        "precision": 0.4961636828644501,
+        "recall": 0.30218068535825543
+      },
+      "MJU": {
+        "images": 36,
+        "objects": 42,
+        "mAP50": 0.1884831203704492,
+        "mAP50_95": 0.09343033136185815,
+        "precision": 0.2,
+        "recall": 0.35714285714285715
+      }
+    },
+    "selection": "Conservative own-weight average; TACO guard, improved single-object coverage, preserve existing photo material responses",
+    "initial_state_sha256": "b408474c9e505a059ad36674a476d3f8421301de9d6817811be703ba0e3e217c",
+    "confidence": 0.25,
+    "nms_iou": 0.45,
+    "test_used_for_selection": false,
+    "weight_fractions": {
+      "own_previous_runtime_epoch145": 0.5,
+      "own_mixed_epoch185": 0.25,
+      "own_refinement_epoch11_EMA": 0.25
+    }
   }
 }
