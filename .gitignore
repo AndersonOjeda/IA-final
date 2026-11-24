@@ -1,0 +1,35 @@
+# Datos, informes generados y temporales
+data/**
+!data/**/
+!data/**/.gitkeep
+!data/README.md
+.vision-ia-split-*/
+runs/
+exports/
+config/sync.local.json
+# Pesos y checkpoints (ningun modelo se crea en fase 1)
+*.pt
+*.pth
+*.ckpt
+checkpoints/
+*.safetensors
+*.onnx
+models/**
+!models/.gitkeep
+!models/README.md
+# Entornos y Python
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+# Editor y sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+.env
+.env.*

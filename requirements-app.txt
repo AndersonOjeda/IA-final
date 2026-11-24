@@ -1,0 +1,5 @@
+# Aplicacion local: sin pesos descargados, servicios de IA o dependencias de entrenamiento extra.
+-r requirements-data.txt
+torch>=2.5,<3
+opencv-python>=4.10,<5
+streamlit>=1.49,<2
