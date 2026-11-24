@@ -13,7 +13,7 @@ from app.detector import analyze_objects,annotate_objects
 from app.localization import manual_region
 from app.recycling import guidance
 from app.resources import get_detector,get_model,reserved_image_hashes
-from app.browser_camera import BrowserRecognition,camera_component
+from app.browser_camera import BrowserRecognition,CAMERA_GUIDE,camera_component
 from app.settings import checkpoint_signature,load_settings
 from app.vision import decode_image,annotate_region
 
@@ -47,7 +47,7 @@ def live_panel(service,detector,threshold,model_key):
     recognition=previous[1]
     def receive_frame():
         recognition.consume(st.session_state.get('browser_camera'),detector,service)
-    payload=camera_component(response=recognition.response,interval_ms=250,key='browser_camera',
+    payload=camera_component(response=recognition.response,guide=CAMERA_GUIDE,interval_ms=250,key='browser_camera',
                              on_change=receive_frame,default=None)
     recognition.consume(payload,detector,service)
 

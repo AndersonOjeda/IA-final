@@ -20,20 +20,45 @@ def payload(sid='session-a',sequence=1):
 
 class Detector:
     calls=0
-    def detect(self,frame):
+    def detect(self,frame,confidence=None):
         self.calls+=1
         return [Detection((10,20,50,90),.9,Region((5,15,55,95),'neuronal')),
                 Detection((100,20,150,100),.7,Region((95,15,155,105),'neuronal'))]
 
 
 class BrowserCameraTests(unittest.TestCase):
+    def test_weak_live_box_requires_three_matches_and_stays_tracked_on_next_weak_reading(self):
+        class WeakDetector:
+            confidence=.25
+
+            def detect(self,frame,confidence=None):
+                self.requested_confidence=confidence
+                if frame.shape[:2]!=(120,160):
+                    return []
+                return [Detection((43,21,78,103),.21,Region((20,16,96,108),'test'))]
+
+        recognition=BrowserRecognition()
+        detector=WeakDetector()
+        classifier=FakeService()
+        for sequence in (1,2):
+            recognition.consume(payload(sequence=sequence),detector,classifier)
+            self.assertIsNone(recognition.response['detection'])
+            self.assertEqual(classifier.calls,0)
+        recognition.consume(payload(sequence=3),detector,classifier)
+        first=recognition.response['detection']
+        self.assertIsNotNone(first)
+        self.assertEqual(detector.requested_confidence,.20)
+        recognition.consume(payload(sequence=4),detector,classifier)
+        self.assertEqual(recognition.response['detection']['track_id'],first['track_id'])
+        self.assertEqual(classifier.calls,2)
+
     def test_zoom_requires_repeated_detection_and_maps_box_to_original_frame(self):
         recognition=BrowserRecognition()
         classifier=FakeService()
         center_box=(22,12,72,66)
 
         class ZoomOnly:
-            def detect(self,frame):
+            def detect(self,frame,confidence=None):
                 if frame.shape[:2]==(120,160):
                     return []
                 return [Detection(center_box,.28,Region((16,8,80,72),'test'))]
@@ -55,7 +80,7 @@ class BrowserCameraTests(unittest.TestCase):
         classifier=FakeService()
 
         class CutOff:
-            def detect(self,frame):
+            def detect(self,frame,confidence=None):
                 if frame.shape[:2]==(120,160):
                     return []
                 return [Detection((0,12,62,66),.8,Region((0,8,70,72),'test'))]
@@ -94,7 +119,7 @@ class BrowserCameraTests(unittest.TestCase):
         classifier=AlternatingService()
         results=[]
         for i,detections in enumerate(positions,1):
-            detector.detect=lambda _: detections
+            detector.detect=lambda _, confidence=None: detections
             recognition.consume(payload(sequence=i),detector,classifier)
             results.append(recognition.response['detection'])
 

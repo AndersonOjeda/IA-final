@@ -13,6 +13,8 @@ from app.recycling import guidance
 from app.vision import decode_image
 
 camera_component=components.declare_component('vision_camera',path=str(Path(__file__).parent/'camera_component'))
+CAMERA_GUIDE=(.16,.10,.84,.90)
+CAMERA_CANDIDATE_CONFIDENCE=.20
 
 
 class BrowserRecognition:
@@ -26,46 +28,72 @@ class BrowserRecognition:
         self.objects=()
         self.response={}
         self.running=False
-        self.zoom_candidate=None
+        self.pending_candidate=None
         self.zoom_retry_at=0
 
     def _detect_live(self, frame, detector):
-        detections=detector.detect(frame)
+        threshold=getattr(detector,'confidence',.25)
+        minimum=min(threshold,CAMERA_CANDIDATE_CONFIDENCE)
+        proposals=detector.detect(frame,confidence=minimum)
+        detections=[item for item in proposals if item.confidence>=threshold]
         if detections:
-            self.zoom_candidate=None
+            self.pending_candidate=None
             self.zoom_retry_at=0
             return detections
-        if self.sequence<self.zoom_retry_at:
-            return []
 
+        now=time.monotonic()
+        height,width=frame.shape[:2]
+        active=next(iter(self.tracker.tracks.values()),None)
+        if active and now-self.tracker.last_seen<1.1:
+            for proposal in proposals:
+                if box_iou(proposal.box,active['box'])>=.5:
+                    self.pending_candidate=None
+                    return [proposal]
+
+        gx1,gy1,gx2,gy2=CAMERA_GUIDE
+        def inside_guide(item):
+            x1,y1,x2,y2=item.box
+            return gx1*width<=(x1+x2)/2<=gx2*width and gy1*height<=(y1+y2)/2<=gy2*height
+
+        candidate=next((item for item in proposals if inside_guide(item)),None)
+        if self.sequence>=self.zoom_retry_at:
+            zoom=self._center_candidate(frame,detector,minimum)
+            if zoom and (zoom.confidence>=threshold or candidate is None):
+                candidate=zoom
+            if zoom is None:
+                self.zoom_retry_at=self.sequence+3
+
+        if candidate is None:
+            self.pending_candidate=None
+            return []
+        previous=self.pending_candidate
+        readings=1
+        if previous and self.sequence==previous[2]+1 and now-previous[1]<1.1:
+            if box_iou(candidate.box,previous[0])>=.5:
+                readings=previous[3]+1
+        self.pending_candidate=(candidate.box,now,self.sequence,readings)
+        if active and now-self.tracker.last_seen<1.1 and box_iou(candidate.box,active['box'])>=.5:
+            return [candidate]
+        required=2 if candidate.confidence>=threshold else 3
+        return [candidate] if readings>=required else []
+
+    @staticmethod
+    def _center_candidate(frame, detector, minimum):
         height,width=frame.shape[:2]
         left,top=round(width*.14),round(height*.14)
         zoom=frame[top:height-top,left:width-left].copy()
         zoom_height,zoom_width=zoom.shape[:2]
         if min(zoom_height,zoom_width)<32:
-            return []
+            return None
         margin=max(2,min(width,height)*.012)
-        candidate=None
-        for detection in detector.detect(zoom):
+        for detection in detector.detect(zoom,confidence=minimum):
             x1,y1,x2,y2=detection.box
             if min(x1,y1,zoom_width-x2,zoom_height-y2)<margin:
                 continue
             box=(x1+left,y1+top,x2+left,y2+top)
             region=Region(crop_box(box,width,height),'neuronal-VisionLocaliza-D2')
-            candidate=replace(detection,box=box,region=region)
-            break
-
-        if candidate is None:
-            self.zoom_candidate=None
-            self.zoom_retry_at=self.sequence+3
-            return []
-        now=time.monotonic()
-        previous=self.zoom_candidate
-        self.zoom_candidate=(candidate.box,now)
-        same_candidate=previous and now-previous[1]<1.1 and box_iou(candidate.box,previous[0])>=.5
-        active=next(iter(self.tracker.tracks.values()),None)
-        same_object=active and now-self.tracker.last_seen<1.1 and box_iou(candidate.box,active['box'])>=.5
-        return [candidate] if same_candidate or same_object else []
+            return replace(detection,box=box,region=region)
+        return None
 
     def consume(self,payload,detector,classifier):
         if not isinstance(payload,dict):return False
@@ -76,12 +104,12 @@ class BrowserRecognition:
         if sid!=self.stream_id:
             if self.stream_id:self.retired.append(self.stream_id)
             self.stream_id=sid;self.sequence=0;self.tracker=ObjectTracker(live=True);self.objects=()
-            self.zoom_candidate=None;self.zoom_retry_at=0
+            self.pending_candidate=None;self.zoom_retry_at=0
         self.sequence=sequence
         self.response={'stream_id':sid,'sequence':sequence,'detection':None}
         if payload.get('event')=='stopped':
             self.running=False;self.objects=();self.tracker=ObjectTracker(live=True)
-            self.zoom_candidate=None;self.zoom_retry_at=0
+            self.pending_candidate=None;self.zoom_retry_at=0
             return True
         try:
             if payload.get('event')!='frame':raise ValueError('Fotograma inválido.')
@@ -104,6 +132,6 @@ class BrowserRecognition:
                 self.response['detection']={'box':box,'track_id':item.track_id,'material':result}
         except Exception:
             self.objects=();self.tracker=ObjectTracker(live=True)
-            self.zoom_candidate=None;self.zoom_retry_at=0
+            self.pending_candidate=None;self.zoom_retry_at=0
             self.response['error']='No se pudo reconocer este fotograma. Prueba con más luz y el residuo completo.'
         return True

@@ -15,6 +15,7 @@ video,canvas.overlay{display:block;width:100%;height:100%;position:absolute;inse
 .result{border-left:1px solid #c9d9d2;padding:0 0 0 16px;align-self:start;min-width:0}
 .result h2{font-size:clamp(1.15rem,3vw,1.65rem);margin:0 0 8px}
 .result p{margin:0;line-height:1.5}
+.result .guide-hint{color:#55716a}
 .destination{font-weight:600}
 .bin-dot{display:inline-block;width:12px;height:12px;margin-right:7px;border:1px solid #819b91;border-radius:50%;vertical-align:middle;background:white}
 .bin-dot.green{background:#28804d}
@@ -32,6 +33,7 @@ video,canvas.overlay{display:block;width:100%;height:100%;position:absolute;inse
 </div>
 <div class="result" id="result" aria-live="polite" hidden>
   <h2 id="material"></h2>
+  <p id="guide-hint" class="guide-hint" hidden>Muéstralo completo dentro del recuadro.</p>
   <p id="destination-row" class="destination" hidden><span id="bin" class="bin-dot"></span><span id="destination"></span></p>
 </div></div>
 <script src="box_tracking.js"></script>
@@ -44,21 +46,24 @@ const motion=document.createElement('canvas'),motionPen=motion.getContext('2d',{
 let media=null,streamId='',sequence=0,pending=null,lastSent=0,opening=false,height=0;
 let track=null,displayBox=null,videoTime=-1,lastMotion=0,resultKey='';
 let enabled=true,interval=250;
+let guideBox=[.16,.10,.84,.90];
 function post(type,details){window.parent.postMessage({isStreamlitMessage:true,type,...details},'*');}
 function send(value){post('streamlit:setComponentValue',{value,dataType:'json'});}
 function resize(){const value=Math.ceil(document.body.scrollHeight);if(value!==height){height=value;post('streamlit:setFrameHeight',{height:value});}}
 function notice(text,error=false){$('notice').textContent=text;$('notice').className=error?'error':'';resize();}
 function showMaterial(now=performance.now()) {
-  const material=track?.detection.material;
+  const searching=Boolean(media && (!track || (track.misses && !track.template)));
+  const material=searching ? null : track?.detection.material;
   let label=material?.label ?? '';
   if(track && !material)label=now-track.startedAt<2000 ? 'Identificando material…' : 'Material sin confirmar';
-  if(!track && media)label='Muestra un residuo completo';
+  if(searching)label='Buscando el residuo';
   const destination=material?.destination ?? '';
   const key=JSON.stringify([label,destination,material?.organic]);
   if(key===resultKey)return;
   resultKey=key;
   $('result').hidden=!label;
   $('material').textContent=label;
+  $('guide-hint').hidden=!searching;
   $('destination').textContent=destination;
   $('destination-row').hidden=!destination;
   $('bin').classList.toggle('green',Boolean(material?.organic));
@@ -120,7 +125,7 @@ function applyDetection(detection, request, now) {
   const age=now-request.sent;
   if(age>=BOX_MAX_AGE || !request.frame)return;
   if(!detection) {
-    if(track && (++track.misses>=2 || !track.template))clearTrack();
+    if(track && ++track.misses>=2)clearTrack();
     return;
   }
   const candidate=new CameraBoxTrack(detection,request.frame,request.sent);
@@ -167,13 +172,18 @@ function tick(now){
     pen.clearRect(0,0,overlay.width,overlay.height);
     if(track){
       displayBox=displayBox ? displayBox.map((value,i)=>value+.55*(track.box[i]-value)) : track.box;
-      const [x1,y1,x2,y2]=displayBox;
-      pen.lineWidth=Math.max(2,overlay.width/320);pen.strokeStyle=track.detection.material?'#157e75':'#d78c14';
-      pen.strokeRect(x1*overlay.width,y1*overlay.height,(x2-x1)*overlay.width,(y2-y1)*overlay.height);
-      if(track.detection.material) {
-        pen.font=`600 ${Math.max(18,overlay.width/38)}px Segoe UI`;pen.fillStyle=pen.strokeStyle;
-        pen.fillText(track.detection.material.label,Math.max(4,x1*overlay.width),Math.max(24,y1*overlay.height-8));
-      }
+    }
+    const [x1,y1,x2,y2]=displayBox ?? guideBox;
+    const isGuide=!track || (track.misses && !track.template);
+    const material=isGuide ? null : track.detection.material;
+    pen.lineWidth=Math.max(2,overlay.width/320);
+    pen.strokeStyle=material?'#157e75':'#d78c14';
+    pen.setLineDash(isGuide?[pen.lineWidth*4,pen.lineWidth*3]:[]);
+    pen.strokeRect(x1*overlay.width,y1*overlay.height,(x2-x1)*overlay.width,(y2-y1)*overlay.height);
+    pen.setLineDash([]);
+    if(material) {
+      pen.font=`600 ${Math.max(18,overlay.width/38)}px Segoe UI`;pen.fillStyle=pen.strokeStyle;
+      pen.fillText(material.label,Math.max(4,x1*overlay.width),Math.max(24,y1*overlay.height-8));
     }
     if(canSend){
       const scale=Math.min(1,640/Math.max(video.videoWidth,video.videoHeight));
@@ -191,6 +201,7 @@ function tick(now){
 window.addEventListener('message',event=>{
   if(event.source!==window.parent||event.data?.type!=='streamlit:render')return;
   const args=event.data.args||{};enabled=!event.data.disabled;interval=Math.max(200,args.interval_ms||250);
+  if(Array.isArray(args.guide) && args.guide.length===4)guideBox=args.guide;
   const reply=args.response;
   if(reply&&reply.stream_id===streamId&&pending&&reply.sequence===pending.sequence){
     const request=pending;

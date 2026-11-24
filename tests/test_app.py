@@ -206,7 +206,7 @@ class RealModelAndUITests(unittest.TestCase):
         from app.detector import Detection
         from app.localization import Region
         class Detector:
-            def detect(self,rgb):return [Detection((10,10,50,60),.9,Region((5,5,65,65),'neuronal'))]
+            def detect(self,rgb,confidence=None):return [Detection((10,10,50,60),.9,Region((5,5,65,65),'neuronal'))]
         frame={'event':'frame','stream_id':'browser-test','sequence':1,'image':base64.b64encode(self.payload).decode()}
         # Browser protocol limits live frames to 640 pixels; use a small real JPEG.
         buf=io.BytesIO();Image.new('RGB',(200,200)).save(buf,'JPEG')

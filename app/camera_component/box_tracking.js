@@ -24,7 +24,7 @@ function boxTemplate(frame, box) {
   const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
   const centered = Float32Array.from(values, value => value - mean);
   const energy = centered.reduce((sum, value) => sum + value * value, 0);
-  if (energy < 100 * values.length || sampleX[11] - sampleX[0] < 5 ||
+  if (energy < 64 * values.length || sampleX[11] - sampleX[0] < 5 ||
       sampleY.at(-1) - sampleY[0] < 5) return null;
   return {sampleX, sampleY, centered, energy, mean, box, width, height};
 }
