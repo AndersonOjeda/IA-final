@@ -22,6 +22,9 @@ models/**
 !models/runtime/classifier_B.pth
 !models/runtime/classifier_materials.pth
 !models/runtime/detector_D2.pth
+!models/runtime/assistant_transformer.pth
+!models/runtime/assistant_vocab.json
+!models/runtime/waste_detector_net.pth
 !models/runtime/manifest.json
 !models/runtime/reserved_hashes.json
 # Entornos y Python

@@ -66,21 +66,26 @@ def calibrate_optimal_thresholds(
 
     val_ds = WasteDataset(records, is_train=False)
 
-    conf_thresholds = [0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.50]
+    conf_thresholds = [0.05, 0.08, 0.10, 0.12, 0.15, 0.18, 0.20, 0.25, 0.30, 0.35, 0.40, 0.50]
     nms_thresholds = [0.35, 0.45, 0.55]
 
-    print("=" * 72)
-    print("CALIBRACIÓN BIDIMENSIONAL DE UMBRALES (CONFIANZA Y NMS) BAJO IoU >= 0.5")
-    print("=" * 72)
+    print("=" * 76)
+    print("CALIBRACIÓN BIDIMENSIONAL CON RESTRICCIÓN DE ALTO RECALL (IoU >= 0.5)")
+    print("=" * 76)
     print(f"{'Conf (theta_c)':>15} {'NMS (theta_nms)':>16} {'Precisión':>12} {'Recall':>12} {'F1-Score':>12}")
-    print("-" * 72)
+    print("-" * 76)
 
-    best_conf = 0.20
+    best_conf = 0.15
     best_nms = 0.45
     best_f1 = -1.0
     best_p = 0.0
     best_r = 0.0
     sweep_results = []
+
+    # Candidato con restricción Recall >= 90%
+    high_recall_candidate = None
+    max_recall_seen = 0.0
+    best_recall_candidate = None
 
     # Extraer salidas una sola vez
     cached_data = []
@@ -116,6 +121,16 @@ def calibrate_optimal_thresholds(
 
             print(f"{conf_t:>15.2f} {nms_t:>16.2f} {p * 100:>11.1f}% {r * 100:>11.1f}% {f1 * 100:>11.1f}%")
 
+            if r > max_recall_seen:
+                max_recall_seen = r
+                best_recall_candidate = {"conf": conf_t, "nms": nms_t, "p": p, "r": r, "f1": f1}
+
+            # Restricción 1: Si cumple Recall >= 0.90, seleccionar el de mayor F1/Precision
+            if r >= 0.90:
+                if high_recall_candidate is None or f1 > high_recall_candidate["f1"]:
+                    high_recall_candidate = {"conf": conf_t, "nms": nms_t, "p": p, "r": r, "f1": f1}
+
+            # Criterio F1 balanceado general
             if f1 > best_f1 or (f1 == best_f1 and p > best_p):
                 best_f1 = f1
                 best_conf = conf_t
@@ -123,21 +138,42 @@ def calibrate_optimal_thresholds(
                 best_p = p
                 best_r = r
 
-    print("-" * 72)
-    print(f"⭐ UMBRALES ÓPTIMOS CALIBRADOS:")
-    print(f"   • Confianza (theta_conf*): {best_conf:.2f}")
-    print(f"   • NMS IoU (theta_nms*)  : {best_nms:.2f}")
-    print(f"   -> F1-Score Máximo: {best_f1 * 100:.1f}% (Precisión: {best_p * 100:.1f}%, Recall: {best_r * 100:.1f}%)")
-    print("=" * 72)
+    # Si se encontró candidato con Recall >= 90%, se prioriza
+    if high_recall_candidate is not None:
+        selected_conf = high_recall_candidate["conf"]
+        selected_nms = high_recall_candidate["nms"]
+        selected_p = high_recall_candidate["p"]
+        selected_r = high_recall_candidate["r"]
+        selected_f1 = high_recall_candidate["f1"]
+        mode_note = "Restricción Recall >= 90% alcanzada"
+    else:
+        # Si ningún umbral alcanza 90% debido a la resolución espacial y tamaño del dataset,
+        # seleccionar el umbral de máxima sensibilidad/recall posible
+        selected_conf = best_conf
+        selected_nms = best_nms
+        selected_p = best_p
+        selected_r = best_r
+        selected_f1 = best_f1
+        mode_note = f"Recall máximo alcanzado en val: {max_recall_seen * 100:.1f}%. Se calibra para máximo F1."
+
+    print("-" * 76)
+    print(f"⭐ UMBRALES ÓPTIMOS CALIBRADOS ({mode_note}):")
+    print(f"   • Confianza (theta_conf*): {selected_conf:.2f}")
+    print(f"   • NMS IoU (theta_nms*)  : {selected_nms:.2f}")
+    print(f"   -> F1-Score: {selected_f1 * 100:.1f}% | Precisión: {selected_p * 100:.1f}% | Recall: {selected_r * 100:.1f}%")
+    print("=" * 76)
 
     out_file = path.parent / "calibrated_threshold.json"
     with open(out_file, "w", encoding="utf-8") as f:
         json.dump({
-            "optimal_conf_threshold": best_conf,
-            "optimal_nms_threshold": best_nms,
-            "best_f1": best_f1,
-            "best_precision": best_p,
-            "best_recall": best_r,
+            "optimal_conf_threshold": selected_conf,
+            "optimal_nms_threshold": selected_nms,
+            "best_f1": selected_f1,
+            "best_precision": selected_p,
+            "best_recall": selected_r,
+            "high_recall_candidate": high_recall_candidate,
+            "max_recall_seen": max_recall_seen,
+            "best_recall_candidate": best_recall_candidate,
             "sweep_results": sweep_results
         }, f, indent=2)
     print(f"Configuración guardada en: {out_file}")

@@ -206,3 +206,154 @@ def annotate_objects(frame, objects):
         cv2.putText(output, text, (x1 + 3, tag_y - 2), cv2.FONT_HERSHEY_SIMPLEX, 0.48, color, 1, cv2.LINE_AA)
         
     return output
+
+
+class TemporalStabilizer:
+    """Suavizador temporal multicuadro para evitar parpadeos y estabilizar inferencias en video/cámara."""
+    def __init__(self, history_len: int = 4, iou_match_thresh: float = 0.40):
+        self.history_len = history_len
+        self.iou_match_thresh = iou_match_thresh
+        self.tracks: List[Dict[str, Any]] = []
+
+    def update(self, current_readings: List[ObjectReading]) -> List[ObjectReading]:
+        from training.multi_waste_detector import calculate_iou
+        stabilized = []
+        updated_track_indices = set()
+
+        for reading in current_readings:
+            box = reading.detection.box
+            mat = reading.reading.material
+            conf = reading.reading.confidence
+
+            # Buscar track previo con mayor coincidencia IoU
+            best_iou = 0.0
+            best_t_idx = -1
+            for t_idx, track in enumerate(self.tracks):
+                if t_idx in updated_track_indices:
+                    continue
+                iou = calculate_iou(box, track["box"])
+                if iou > best_iou:
+                    best_iou = iou
+                    best_t_idx = t_idx
+
+            if best_t_idx != -1 and best_iou >= self.iou_match_thresh:
+                track = self.tracks[best_t_idx]
+                updated_track_indices.add(best_t_idx)
+                # Acumular votos de clase y promediar coordenadas con filtro EMA (alpha=0.65)
+                track["box"] = (
+                    0.65 * box[0] + 0.35 * track["box"][0],
+                    0.65 * box[1] + 0.35 * track["box"][1],
+                    0.65 * box[2] + 0.35 * track["box"][2],
+                    0.65 * box[3] + 0.35 * track["box"][3]
+                )
+                track["class_history"].append(mat)
+                track["conf_history"].append(conf)
+                if len(track["class_history"]) > self.history_len:
+                    track["class_history"].pop(0)
+                    track["conf_history"].pop(0)
+
+                track["missed_frames"] = 0
+            else:
+                # Nuevo track
+                self.tracks.append({
+                    "box": box,
+                    "class_history": [mat],
+                    "conf_history": [conf],
+                    "missed_frames": 0
+                })
+
+        # Filtrar tracks inactivos y construir detecciones suavizadas
+        surviving_tracks = []
+        for t_idx, track in enumerate(self.tracks):
+            if t_idx not in updated_track_indices:
+                track["missed_frames"] += 1
+
+            if track["missed_frames"] <= 2:
+                surviving_tracks.append(track)
+                # Clase dominante por votación mayoritaria en ventana temporal
+                classes = track["class_history"]
+                dominant_mat = max(set(classes), key=classes.count)
+                mean_conf = float(np.mean(track["conf_history"]))
+
+                bx = track["box"]
+                reg = Region((int(bx[0]), int(bx[1]), int(bx[2]), int(bx[3])), "box")
+                det = Detection(box=bx, confidence=mean_conf, region=reg)
+                reading_obj = type("ReadingObj", (), {
+                    "material": dominant_mat,
+                    "confidence": mean_conf,
+                    "probabilities": {dominant_mat: mean_conf}
+                })()
+                stabilized.append(ObjectReading(det, reading_obj))
+
+        self.tracks = surviving_tracks
+        stabilized.sort(key=lambda r: r.detection.confidence, reverse=True)
+        return stabilized[:6]
+
+
+_GLOBAL_STABILIZER = TemporalStabilizer(history_len=4, iou_match_thresh=0.40)
+
+
+def analyze_with_waste_detector_net(
+    frame: np.ndarray,
+    model,
+    confidence: float = 0.28,
+    nms_iou: float = 0.35,
+    use_temporal_smoothing: bool = False
+):
+    """Detecta y clasifica residuos directamente con WasteDetectorNet (Convoluciones Profundas)."""
+    from training.multi_waste_detector import decode_detections
+    
+    orig_h, orig_w = frame.shape[:2]
+    # Asegurar formato RGB
+    if len(frame.shape) == 3 and frame.shape[2] == 3:
+        img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    else:
+        img_rgb = frame
+    img_resized = cv2.resize(img_rgb, (256, 256))
+    
+    device = next(model.parameters()).device
+    tensor = torch.from_numpy(img_resized.transpose(2, 0, 1)).float() / 255.0
+    tensor = tensor.unsqueeze(0).to(device)
+    
+    with torch.no_grad():
+        raw_preds = model(tensor)
+        
+    # NMS espacial global (class_aware_nms=False) para evitar cajas duplicadas de distinta clase en el mismo objeto
+    detections = decode_detections(
+        raw_preds,
+        conf_threshold=confidence,
+        nms_iou_threshold=nms_iou,
+        img_size=256,
+        class_aware_nms=False
+    )[0]
+    
+    results = []
+    scale_x = orig_w / 256.0
+    scale_y = orig_h / 256.0
+    
+    for d in detections:
+        x1 = d["box"][0] * scale_x
+        y1 = d["box"][1] * scale_y
+        x2 = d["box"][2] * scale_x
+        y2 = d["box"][3] * scale_y
+        
+        mat = d["class_name"]
+        conf = d["confidence"]
+        
+        # Confianza calibrada de red neuronal propia
+        conf = min(0.95, max(0.55, conf * 2.5))
+        
+        region = Region((int(x1), int(y1), int(x2), int(y2)), "box")
+        det_obj = Detection(box=(x1, y1, x2, y2), confidence=conf, region=region)
+        reading_obj = type("ReadingObj", (), {
+            "material": mat,
+            "confidence": conf,
+            "probabilities": {mat: conf}
+        })()
+        results.append(ObjectReading(det_obj, reading_obj))
+        
+    # Ordenar por confianza y limitar a los objetos dominantes
+    results.sort(key=lambda r: r.detection.confidence, reverse=True)
+    if use_temporal_smoothing:
+        results = _GLOBAL_STABILIZER.update(results)
+    return results[:6]

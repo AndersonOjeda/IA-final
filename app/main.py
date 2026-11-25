@@ -23,11 +23,11 @@ import numpy as np
 import streamlit as st
 import torch
 
-from app.detector import analyze_all_objects, annotate_objects
+from app.detector import analyze_all_objects, analyze_with_waste_detector_net, annotate_objects
 from app.localization import manual_region
 from app.recycling import guidance, LABELS
 from app.resources import (
-    get_detector, get_model, get_assistant, reserved_image_hashes
+    get_detector, get_model, get_assistant, get_waste_detector_net, reserved_image_hashes
 )
 from app.browser_camera import BrowserRecognition, CAMERA_GUIDE, camera_component
 from app.settings import checkpoint_signature, load_settings
@@ -162,11 +162,26 @@ def main():
     else:
         ast_tokenizer = ast_model = ast_engine = None
 
+    waste_net = get_waste_detector_net()
+
     # Barra lateral con información técnica y parámetros
     with st.sidebar:
         st.header("⚙️ Panel de Control")
         st.caption("Ajuste de inferencia en tiempo real")
-        conf_slider = st.slider("Umbral de Confianza", 0.10, 0.90, float(settings['detection_threshold']), 0.05)
+        
+        engine_options = []
+        if waste_net is not None:
+            engine_options.append("⭐ WasteDetectorNet (Convoluciones Profundas - Plástico vs Vidrio)")
+        engine_options.append("Pipeline Clásico en Cascada (D2 + CNN B)")
+        selected_engine = st.selectbox("Motor de Inferencia Visual", engine_options, index=0)
+
+        conf_default = 0.28 if "WasteDetectorNet" in selected_engine else float(settings['detection_threshold'])
+        conf_slider = st.slider("Umbral de Confianza", 0.10, 0.90, conf_default, 0.05)
+        use_smoothing = st.checkbox(
+            "🌊 Suavizado Temporal (Anti-Parpadeo)",
+            value=True,
+            help="Acumula votos y suaviza coordenadas entre fotogramas consecutivos para estabilidad perfecta en cámara."
+        )
         st.divider()
         st.markdown("### 🏷️ Clases del Proyecto (6)")
         for c in CLASSES:
@@ -208,7 +223,10 @@ def main():
                 rgb = decode_image(payload, settings['max_upload_mb'] * 1024 * 1024, settings['max_image_pixels'], reserved_image_hashes())
                 
                 with st.spinner("Localizando y clasificando residuos en la escena..."):
-                    all_objects = analyze_all_objects(rgb, detector, service, confidence=conf_slider)
+                    if "WasteDetectorNet" in selected_engine and waste_net is not None:
+                        all_objects = analyze_with_waste_detector_net(rgb, waste_net, confidence=conf_slider, use_temporal_smoothing=use_smoothing)
+                    else:
+                        all_objects = analyze_all_objects(rgb, detector, service, confidence=conf_slider)
 
                 # Guardar objetos en session_state para que el asistente pueda consultarlos
                 st.session_state["current_scene_objects"] = all_objects

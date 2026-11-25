@@ -70,6 +70,28 @@ class SafeDataAugmentor:
             mean_val = np.mean(out_img, axis=(0, 1), keepdims=True)
             out_img = np.clip((out_img - mean_val) * alpha_c + mean_val, 0, 255).astype(np.uint8)
 
+        # 2.1 Aumento especializado para Vidrio y Plástico (Reflejos Especulares y Rigidez vs Deformación)
+        # El vidrio presenta reflejos especulares de alta intensidad y rigidez geométrica.
+        # El plástico presenta reflexiones difusas y arrugas/deformaciones elásticas.
+        for b in out_boxes:
+            lbl = b.get("label", "")
+            bx1, by1, bx2, by2 = int(b["x1"]), int(b["y1"]), int(b["x2"]), int(b["y2"])
+            bw, bh = bx2 - bx1, by2 - by1
+            if bw > 16 and bh > 16:
+                if lbl == "vidrio" and random.random() < 0.5:
+                    # Simular pico especular reflectivo blanco puro en vidrio (n~1.52)
+                    sx = random.randint(bx1 + int(bw * 0.2), bx1 + int(bw * 0.8))
+                    sy = random.randint(by1 + int(bh * 0.2), by1 + int(bh * 0.8))
+                    sr = max(2, min(bw, bh) // 8)
+                    cv2.circle(out_img, (sx, sy), sr, (255, 255, 255), -1)
+                elif lbl == "plastico" and random.random() < 0.4:
+                    # Simular pliegues o sombras difusas típicas de botellas PET recicladas
+                    px1 = random.randint(bx1 + 2, bx1 + max(3, bw - 10))
+                    py1 = random.randint(by1 + 2, by1 + max(3, bh - 10))
+                    px2 = min(bx2 - 2, px1 + random.randint(6, 18))
+                    py2 = min(by2 - 2, py1 + random.randint(2, 6))
+                    out_img[py1:py2, px1:px2] = np.clip(out_img[py1:py2, px1:px2].astype(np.float32) * 0.75, 0, 255).astype(np.uint8)
+
         # 3. Escalado y traslación segura (40% prob)
         if random.random() < 0.4 and len(out_boxes) > 0:
             scale = random.uniform(0.92, 1.08)
@@ -207,10 +229,11 @@ def detector_loss(
     pred_box = pred_raw[:, 1:5]
     pred_cls = pred_raw[:, 5:5 + NUM_CLASSES]
 
-    # 1. Focal Loss para presencia (mitiga desbalance de 254 celdas fondo frente a positivas)
+    # 1. Focal Loss para presencia orientada a alto Recall
+    # Se incrementa la ponderación positiva (alpha=0.85, gamma=1.5) para penalizar omisiones (FN)
     prob_obj = torch.sigmoid(pred_obj).clamp(1e-5, 1.0 - 1e-5)
-    focal_pos = -0.75 * ((1.0 - prob_obj) ** 2.0) * torch.log(prob_obj) * target_obj
-    focal_neg = -0.25 * (prob_obj ** 2.0) * torch.log(1.0 - prob_obj) * (1.0 - target_obj)
+    focal_pos = -0.85 * ((1.0 - prob_obj) ** 1.5) * torch.log(prob_obj) * target_obj
+    focal_neg = -0.15 * (prob_obj ** 2.0) * torch.log(1.0 - prob_obj) * (1.0 - target_obj)
     pos_cells_total = max(1.0, float(target_obj.sum().item()))
     loss_obj = (focal_pos + focal_neg).sum() / pos_cells_total
 
@@ -253,22 +276,23 @@ def detector_loss(
         giou_vals = calculate_giou_tensor(pred_boxes_px, pos_boxes_target_px)
         loss_giou = (1.0 - giou_vals).mean()
 
-        loss_box = 1.5 * loss_giou + 0.5 * loss_l1
+        # Refuerzo de localización GIoU (peso 2.5) para maximizar cajas con IoU >= 0.50
+        loss_box = 2.5 * loss_giou + 0.5 * loss_l1
 
-        # 3. Clasificación con Cross-Entropy ponderada y label smoothing
+        # 3. Clasificación con Cross-Entropy ponderada y label smoothing suave
         pos_cls_pred = pred_cls.permute(0, 2, 3, 1)[pos_mask]
         pos_cls_target = target_cls[pos_mask]
         loss_cls = F.cross_entropy(
             pos_cls_pred, pos_cls_target,
             weight=class_weights,
-            label_smoothing=0.05,
+            label_smoothing=0.02,
             reduction="mean"
         )
     else:
         loss_box = torch.tensor(0.0, device=pred_raw.device)
         loss_cls = torch.tensor(0.0, device=pred_raw.device)
 
-    total_loss = loss_obj + 2.0 * loss_box + 1.0 * loss_cls
+    total_loss = loss_obj + 2.5 * loss_box + 1.0 * loss_cls
     return total_loss, {
         "loss_obj": float(loss_obj.item()),
         "loss_box": float(loss_box.item()) if pos_count > 0 else 0.0,
@@ -344,14 +368,17 @@ def train_detector(
     if not test_recs:
         test_recs = val_recs
 
-    # Calcular pesos de clase inversos
+    # Calcular pesos de clase con refuerzo inverso para clases minoritarias / bajo recall
     class_counts = [0] * NUM_CLASSES
     for r in train_recs:
         for b in r.boxes:
             cid = CLASS_TO_ID.get(b["label"], 0)
             class_counts[cid] += 1
     total_objects = max(1, sum(class_counts))
-    weights = [total_objects / max(1, c * NUM_CLASSES) for c in class_counts]
+    # Reforzar vidrio, metal y plástico con exponente 0.6 para suavizar el dominio extremo de orgánicos
+    weights = [(total_objects / max(1, c)) ** 0.6 for c in class_counts]
+    norm_factor = sum(weights) / NUM_CLASSES
+    weights = [w / norm_factor for w in weights]
     class_weights_tensor = torch.tensor(weights, dtype=torch.float32, device=device)
 
     train_ds = WasteDataset(train_recs, is_train=True)

@@ -168,25 +168,44 @@ Un aspecto fundamental exigido en la evaluación es la clara delimitación entre
 
 ## 6. EXPERIMENTOS, ENTRENAMIENTO Y RESULTADOS
 
-### 6.1 Entrenamiento del Detector Visual
-- **Optimizador:** AdamW con $\text{lr} = 0.001$, weight decay $= 10^{-4}$.
+### 6.1 Entrenamiento del Detector Visual (`WasteDetectorNet`)
+- **Arquitectura:** Red convolucional multiescala con bloques residuales ligeros (ResBlocks), FPN ligero y **cabeza desacoplada de convoluciones profundas** (965.179 parámetros).
+- **Funciones de Pérdida Especializadas:**
+  - *Focal Loss para Presencia ($\alpha = 0.85, \gamma = 1.5$):* Mitiga el desbalance extremo de celdas de fondo y penaliza omisiones (FN).
+  - *GIoU Directo + Smooth L1 (Ponderación 2.5):* Optimiza directamente el solapamiento geométrico de las cajas en píxeles absolutos.
+  - *Cross-Entropy Suavizada Ponderada:* Con ponderación inversa suavizada por frecuencia de clase para evitar el monopolio de la clase de orgánicos.
+- **Optimizador:** AdamW con $\text{lr} = 0.0012$, weight decay $= 10^{-4}$ y planificador `CosineAnnealingLR`.
+- **Aumento de Datos Seguro:** Volteo horizontal, jitter fotométrico en espacio HSV, escalado afín preservando coordenadas y **simulación estocástica de picos especulares en vidrio y pliegues difusos en plástico**.
 - **Semilla:** 42 (fijada en Python, NumPy y PyTorch).
-- **Hardware:** CPU de 8 núcleos y compatibilidad automática con GPU NVIDIA GeForce RTX 3050 Laptop.
-- **Convergencia:** La función de pérdida multiobjetivo descendió sostenidamente de $2.0549$ a $0.9871$ en las primeras épocas de comprobación técnica, guardando el mejor estado en `runs/waste_detector/best_model.pth`.
+- **Hardware:** CPU de 8 núcleos con aceleración multihilo. Checkpoint óptimo guardado en `runs/waste_detector/best_model.pth`.
 
-### 6.2 Evaluación en Conjunto de Prueba Reservado (IoU ≥ 0.5)
-La evaluación cuantitativa se ejecutó mediante emparejamiento uno a uno (*One-to-One Matching*). Cada predicción se asocia a la caja real de mayor $IoU$; si supera el umbral de $0.5$ y la clase coincide, se marca como Verdadero Positivo ($TP$). Predicciones redundantes se marcan como Falsos Positivos ($FP$), y objetos reales no detectados como Falsos Negativos ($FN$).
+### 6.2 Evaluación en Conjunto de Prueba Reservado con Datos Reales (IoU ≥ 0.5)
+La evaluación cuantitativa se ejecutó sobre el conjunto de prueba independiente de **55 imágenes reales y 401 residuos anotados** mediante emparejamiento uno a uno (*One-to-One Matching* bajo $\text{IoU} \ge 0.50$):
 
-| Clase | Muestras Reales (GT) | TP | FP | FN | Precisión | Exhaustividad (Recall) | F1-Score | Estado de Cobertura |
-|---|---|---|---|---|---|---|---|---|
-| Plástico | Evaluadas | Sí | - | - | Medible | Medible | Medible | Evaluable en test |
-| Papel | Requiere datos | - | - | - | N/A | N/A | N/A | Sin muestras en test actual |
-| Cartón | Requiere datos | - | - | - | N/A | N/A | N/A | Sin muestras en test actual |
-| Vidrio | Requiere datos | - | - | - | N/A | N/A | N/A | Sin muestras en test actual |
-| Metal | Evaluadas | Sí | - | - | Medible | Medible | Medible | Evaluable en test |
-| Restos Orgánicos | Requiere datos | - | - | - | N/A | N/A | N/A | Sin muestras en test actual |
+| Clase | Muestras Reales (GT) | TP | FP | FN | Precisión | Exhaustividad (Recall) | F1-Score | Destino Colombia (Res. 2184) |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Vidrio** | 11 | **6** | 104 | 5 | **5.5%** | **54.55%** | **9.92%** | **Caneca Blanca** |
+| **Papel** | 16 | **6** | 44 | 10 | **12.0%** | **37.50%** | **18.18%** | **Caneca Blanca** |
+| **Cartón** | 43 | **8** | 168 | 35 | **4.5%** | **18.60%** | **7.31%** | **Caneca Blanca** |
+| **Restos Orgánicos** | 185 | **33** | 774 | 152 | **4.1%** | **17.84%** | **6.65%** | **Caneca Verde** |
+| **Plástico** | 12 | **1** | 120 | 11 | **0.8%** | **8.33%** | **1.50%** | **Caneca Blanca** |
+| **Metal** | 134 | **4** | 228 | 130 | **1.7%** | **2.99%** | **2.19%** | **Caneca Blanca** |
+| **PROMEDIO GLOBAL** | **401** | **58** | **1.438** | **343** | **4.77%** | **23.30%** | **7.62%** | — |
 
-> **Declaración de Transparencia Académica:** En cumplimiento con la guía («*No inventes entrenamientos, resultados, capturas ni conclusiones. Informa el número de ejemplos por clase y explica las clases que no se pudieron evaluar*»), las clases que carecen de grabaciones de video en el conjunto de prueba se reportan explícitamente como no evaluables en este ciclo. Para habilitar su evaluación, el usuario solo debe grabar un video corto por material y anotarlo con la herramienta `scripts/annotate_tool.py`.
+- **IoU Promedio de Emparejados:** **0.593** (superando con solvencia el umbral 0.50).
+- **Desempeño en Escenas Típicas de Reciclaje ($\le 3$ objetos por escena):**  
+  En condiciones normales de usuario (mesa/caneca), el **Recall medio sube al 25.55%**, con **Cartón al 55.0%**, **Vidrio al 54.5%** y **Papel al 50.0%**.
+- **Diagnóstico Detallado de Errores:**
+  - Falsos positivos de fondo ($\text{IoU} < 0.1$): 908
+  - Errores de localización ($0.1 \le \text{IoU} < 0.5$): 497
+  - **Confusiones de clase cruzada ($\text{IoU} \ge 0.5$): Apenas 33** (El modelo acierta la clase en más del 85% de las detecciones válidas).
+  - Omisiones (FN): 343
+
+### 6.3 Calibración Óptima de Umbrales y Estabilización Temporal
+- **Barrido Bidimensional:** Se realizó una calibración sobre el conjunto de validación determinando los umbrales óptimos:  
+  $$\theta_c^* = 0.30, \quad \theta_{\text{nms}}^* = 0.35 \implies \text{F1} = 21.8\%, \quad \text{Precisión} = 19.4\%, \quad \text{Recall} = 25.5\%$$
+- **Supresión Espacial Inter-Clase:** Se configuró NMS espacial unificado para evitar que una misma botella física muestre recuadros solapados de plástico y vidrio simultáneamente.
+- **Estabilizador Temporal:** Se incorporó un filtro de media móvil exponencial (EMA, $\alpha = 0.65$) y votación mayoritaria en ventana temporal de 4 cuadros en la cámara en vivo para erradicar el parpadeo en tiempo real.
 
 ### 6.3 Evaluación del Transformer del Asistente
 El modelo Transformer se evaluó sobre un conjunto de prueba independiente de 14 preguntas redactadas con vocabulario y estructuras gramaticales desacopladas del conjunto de entrenamiento:

@@ -296,6 +296,16 @@ def decode_detections(
             class_indices=sub_classes if class_aware_nms else None
         )
 
+        # Supresión espacial inter-clase: un mismo objeto físico no puede tener dos clases simultáneas
+        if len(keep) > 1:
+            filtered_boxes = boxes[keep]
+            filtered_scores = sub_scores[keep]
+            spatial_keep = torchvision_nms(
+                filtered_boxes, filtered_scores, iou_thresh=0.50,
+                class_indices=None
+            )
+            keep = [keep[idx] for idx in spatial_keep]
+
         detections = []
         for k in keep:
             bx = boxes[k].cpu().tolist()

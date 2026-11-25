@@ -22,6 +22,35 @@ def get_detector(path, modified_ns, size_bytes, cpu_threads=2, confidence=.35, n
     return NeuralDetector(path,cpu_threads,confidence,nms_iou)
 
 
+@st.cache_resource(show_spinner="Cargando WasteDetectorNet (Convoluciones Profundas)…", max_entries=1)
+def get_waste_detector_net(checkpoint_path=None):
+    import torch
+    from training.multi_waste_detector import WasteDetectorNet, GRID_SIZE, NUM_CLASSES
+    
+    # Buscar en orden: argumento, models/runtime o runs
+    candidates = []
+    if checkpoint_path:
+        candidates.append(Path(checkpoint_path))
+    candidates.append(PROJECT_ROOT / "models/runtime/waste_detector_net.pth")
+    candidates.append(PROJECT_ROOT / "runs/waste_detector/best_model.pth")
+    
+    target_path = None
+    for c in candidates:
+        if c.exists():
+            target_path = c
+            break
+            
+    if target_path is None:
+        return None
+        
+    model = WasteDetectorNet(num_classes=NUM_CLASSES, grid_size=GRID_SIZE)
+    payload = torch.load(target_path, map_location="cpu", weights_only=False)
+    state = payload.get("state_dict") or payload.get("model_state_dict") or payload
+    model.load_state_dict(state)
+    model.eval()
+    return model
+
+
 @st.cache_resource(show_spinner="Cargando el Transformer del asistente…", max_entries=2)
 def get_assistant(weights_path="models/runtime/assistant_transformer.pth", vocab_path="models/runtime/assistant_vocab.json"):
     import torch
