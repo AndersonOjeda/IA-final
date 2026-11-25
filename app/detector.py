@@ -156,15 +156,53 @@ def analyze_objects(frame,detector,classifier):
     return [ObjectReading(selected,classifier.classify(frame,region=selected.region))] if selected else []
 
 
-def annotate_objects(frame,objects):
+def analyze_all_objects(frame, detector, classifier, confidence=None, max_objects=15):
+    """Localiza y clasifica múltiples residuos simultáneamente en el mismo fotograma."""
+    detections = detector.detect(frame, confidence=confidence)
+    results = []
+    for d in detections[:max_objects]:
+        try:
+            reading = classifier.classify(frame, region=d.region)
+            results.append(ObjectReading(d, reading))
+        except Exception:
+            continue
+    return results
+
+
+def annotate_objects(frame, objects):
     from app.recycling import LABELS
     import unicodedata
-    output=frame.copy()
+    output = frame.copy()
+    
+    # Paleta de colores BGR por clase
+    colors = {
+        "plastico": (255, 140, 0),    # Celeste / azul
+        "papel": (240, 240, 240),      # Blanco
+        "carton": (42, 110, 180),      # Naranja / marrón
+        "vidrio": (220, 220, 0),       # Cyan / turquesa
+        "metal": (180, 180, 180),      # Gris metálico
+        "organicos": (34, 139, 34)     # Verde
+    }
+
     for item in objects:
-        x1,y1,x2,y2=map(round,item.detection.box)
-        color=(21,126,117) if item.confirmed else (215,140,20)
-        cv2.rectangle(output,(x1,y1),(x2,y2),color,2)
-        text=LABELS.get(item.reading.material,item.reading.material)
-        text=unicodedata.normalize('NFKD',text).encode('ascii','ignore').decode()
-        cv2.putText(output,text,(x1,max(18,y1-7)),cv2.FONT_HERSHEY_SIMPLEX,.5,color,2,cv2.LINE_AA)
+        x1, y1, x2, y2 = map(round, item.detection.box)
+        mat = getattr(item.reading, "material", "desconocido")
+        conf = getattr(item.reading, "confidence", item.detection.confidence)
+        color = colors.get(mat, (21, 126, 117))
+        
+        # Recuadro principal
+        cv2.rectangle(output, (x1, y1), (x2, y2), color, 2)
+        
+        # Etiqueta con clase y porcentaje de confianza
+        display_label = LABELS.get(mat, mat.capitalize())
+        group_badge = "Orgánico" if mat == "organicos" else "Inorgánico"
+        text = f"{display_label} ({conf * 100:.1f}%)"
+        text = unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode()
+        
+        # Fondo de la etiqueta para alta legibilidad
+        (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.48, 1)
+        tag_y = max(th + 6, y1)
+        cv2.rectangle(output, (x1, tag_y - th - 5), (x1 + tw + 6, tag_y + 2), (25, 25, 25), -1)
+        cv2.putText(output, text, (x1 + 3, tag_y - 2), cv2.FONT_HERSHEY_SIMPLEX, 0.48, color, 1, cv2.LINE_AA)
+        
     return output

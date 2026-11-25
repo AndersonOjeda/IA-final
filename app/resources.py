@@ -22,6 +22,31 @@ def get_detector(path, modified_ns, size_bytes, cpu_threads=2, confidence=.35, n
     return NeuralDetector(path,cpu_threads,confidence,nms_iou)
 
 
+@st.cache_resource(show_spinner="Cargando el Transformer del asistente…", max_entries=2)
+def get_assistant(weights_path="models/runtime/assistant_transformer.pth", vocab_path="models/runtime/assistant_vocab.json"):
+    import torch
+    from training.assistant_transformer import (
+        SimpleSpanishTokenizer, WasteAssistantTransformer, ColombianRecyclingKnowledgeEngine
+    )
+    p_weights = Path(weights_path)
+    p_vocab = Path(vocab_path)
+    if not p_weights.exists() or not p_vocab.exists():
+        return None
+    tokenizer = SimpleSpanishTokenizer()
+    tokenizer.load(str(p_vocab))
+    payload = torch.load(p_weights, map_location="cpu", weights_only=True)
+    model = WasteAssistantTransformer(
+        vocab_size=payload["vocab_size"],
+        d_model=payload["d_model"],
+        nhead=payload["nhead"],
+        num_layers=payload["num_layers"]
+    )
+    model.load_state_dict(payload["model_state_dict"])
+    model.eval()
+    engine = ColombianRecyclingKnowledgeEngine()
+    return tokenizer, model, engine
+
+
 @st.cache_resource
 def get_camera_pool():
     return CameraPool()

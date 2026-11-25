@@ -155,6 +155,8 @@ class RealModelAndUITests(unittest.TestCase):
         cls.before = sha256(cls.path)
         cls.service = get_model(*cls.signature, 2)
         root = PROJECT_ROOT / "data/experiments/B/processed"
+        if not (root / "manifest.csv").is_file():
+            raise unittest.SkipTest("No está presente el dataset procesado B en local.")
         with (root / "manifest.csv").open(encoding="utf-8", newline="") as handle:
             rows = [r for r in csv.DictReader(handle) if r["split"] == "val"]
         cls.photos = [root / row["path"] for row in rows[:2]]
